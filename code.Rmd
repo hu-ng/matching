@@ -1,0 +1,247 @@
+---
+title: "Causal Inference Assignment"
+---
+(2)
+```{r}
+
+library(Matching)
+foo <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+# extract relevant columns
+foo <- foo[, c(6:8, 11:16, 99, 50, 114, 49, 63, 136, 109, 126, 48, 160, 142, 10)]
+
+# remove 2 rows with missing data (there are better ways to handle missing data)
+foo <- foo[c(-19, -47), ]
+
+og_model <- glm(pbs2s3 ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty + untype4, data=foo, family = binomial)
+
+# Used logcost*untype4 instead of wardur*untype4
+mod_model <- glm(pbs2s3 ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + develop + exp + decade + treaty + untype4 + I(logcost*untype4), data=foo, family = binomial)
+
+# Orignal model
+og_newdata_treat <- with(foo, data.frame(wartype=mean(wartype), logcost=mean(logcost), wardur=c(1:315), factnum=mean(factnum), factnum2=mean(factnum2), trnsfcap=mean(trnsfcap), develop=mean(develop), exp=mean(exp), decade=mean(decade), treaty=mean(treaty), untype4=1))
+
+og_newdata_ctrl <- with(foo, data.frame(wartype=mean(wartype), logcost=mean(logcost), wardur=c(1:315), factnum=mean(factnum), factnum2=mean(factnum2), trnsfcap=mean(trnsfcap), develop=mean(develop), exp=mean(exp), decade=mean(decade), treaty=mean(treaty), untype4=0))
+
+pred_treat = predict(og_model, newdata = og_newdata_treat, type='response')
+pred_ctrl = predict(og_model, newdata = og_newdata_ctrl, type='response')
+og_res <- pred_treat - pred_ctrl
+
+# Graphing this stuff
+par(lty=3)
+plot(og_res, main = 'Figure 8. Causal Effect of Multidimensional UN Peacekeeping Operations', xlab = 'Duration of wars in months',
+     ylab='Marginal effects of UN peacekeeping operations', ylim = c(0, 0.8),type = 'l')
+text(250, 0.7, 'Model with interaction term')
+text(250, 0.3, 'Dotted: original model')
+
+# Modified model
+mod_newdata_treat <- with(foo, data.frame(wartype=mean(wartype), logcost=mean(logcost), wardur=c(1:315), factnum=mean(factnum), factnum2=mean(factnum2), trnsfcap=mean(trnsfcap), develop=mean(develop), exp=mean(exp), decade=mean(decade), treaty=mean(treaty),'I(logcost*untype4)'=mean(logcost)*mean(untype4), untype4=1))
+
+mod_newdata_ctrl <- with(foo, data.frame(wartype=mean(wartype), logcost=mean(logcost), wardur=c(1:315), factnum=mean(factnum), factnum2=mean(factnum2), trnsfcap=mean(trnsfcap), develop=mean(develop), exp=mean(exp), decade=mean(decade), treaty=mean(treaty),'I(logcost*untype4)'=mean(logcost)*mean(untype4), untype4=0))
+
+pred_treat = predict(mod_model, newdata = mod_newdata_treat, type='response')
+pred_ctrl = predict(mod_model, newdata = mod_newdata_ctrl, type='response')
+mod_res <- pred_treat - pred_ctrl
+par(lty=1)
+lines(mod_res)
+```
+
+(3)
+```{r}
+# Get the new column
+dataset <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+
+# Remove NAs
+dataset <- dataset[c(-19, -47), ]
+foo <- cbind(foo, uncint = dataset$uncint)
+
+Tr <- rep(0, length(foo$uncint))
+
+column <- foo$uncint
+
+# Turn levels -> int
+new_col <- rep(0, length(foo$uncint))
+
+for (i in c(1:length(column))){
+  if (column[i] == 'None') {
+    new_col[i] <- 0
+  } else if (column[i] == 'Observer') {
+    new_col[i] <- 2
+  } else if (column[i] == 'PKO') {
+    new_col[i] <- 3
+  } else if (column[i] == 'Enforcement') {
+    new_col[i] <- 4
+  }
+}
+
+# cbind things together
+foo <- cbind(foo, uncint_num = new_col)
+
+Tr[which(new_col != 0 & new_col != 1)] <- 1
+foo <- cbind(foo, treat = Tr)
+```
+
+(c)
+Logistic regressions:
+```{r}
+library(Matching)
+# Add the treatment variable
+dataset <- cbind(dataset, treat = Tr)
+dataset <- cbind(dataset, uncint_num = new_col)
+
+# Filter NA in pbs5l
+idx <- which(is.na(dataset$pbs5l))
+dataset_no.na.5yr <- dataset[-idx,]
+
+# Make pbs2l and pbs5l into numbers
+pbs2l_num <- rep(0, length(dataset$pbs2l))
+pbs2l_num[which(dataset$pbs2l == 'Success')] = 1
+dataset <- cbind(dataset, pbs2l_num = pbs2l_num)
+
+pbs5l_num <- rep(0, length(dataset_no.na.5yr$pbs5l))
+pbs5l_num[which(dataset_no.na.5yr$pbs5l == 'Success')] = 1
+dataset_no.na.5yr <- cbind(dataset_no.na.5yr, pbs5l_num = pbs5l_num)
+
+# Logistic regression for pbs2l
+logistic_2yr <- glm(pbs2l_num ~ treat + wartype + logcost+ wardur+ factnum+ factnum2+ trnsfcap +treaty +develop+ exp +decade, data = dataset, family = 'binomial')
+
+# Treatment effect for pbs2l:
+dataset_ctrl <- dataset[which(dataset$treat == 0),]
+dataset_trt <- dataset[which(dataset$treat == 1),]
+pred_ctrl <- predict(logistic_2yr, newdata = dataset_ctrl, type = 'response')
+pred_treat <- predict(logistic_2yr, newdata = dataset_trt, type = 'response')
+tmt_eff <- mean(pred_treat) - mean(pred_ctrl)
+print(tmt_eff)
+
+mb <- MatchBalance(treat ~ wartype + logcost+ wardur+ factnum+ factnum2+ trnsfcap + treaty +develop+ exp +decade, data=dataset, nboots = 2000)
+
+
+# Logistic regression for 5-year effect
+logistic_5yr <- glm(pbs5l_num ~ treat + wartype + logcost+ wardur+ factnum+ factnum2+ trnsfcap +treaty +develop+ exp + decade, data = dataset_no.na.5yr, family = 'binomial')
+
+# Treatment effect for pbs5l:
+dataset_ctrl <- dataset_no.na.5yr[which(dataset_no.na.5yr$treat == 0),]
+dataset_trt <- dataset_no.na.5yr[which(dataset_no.na.5yr$treat == 1),]
+pred_ctrl <- predict(logistic_2yr, newdata = dataset_ctrl, type = 'response')
+pred_treat <- predict(logistic_2yr, newdata = dataset_trt, type = 'response')
+tmt_eff <- mean(pred_treat) - mean(pred_ctrl)
+print(tmt_eff)
+
+mb <- MatchBalance(treat ~ wartype + logcost+ wardur+ factnum+ factnum2+ trnsfcap + treaty +develop+ exp +decade, data=dataset_no.na.5yr, nboots = 2000)
+```
+
+
+Propensity Score Matching:
+2-year effect:
+```{r}
+set.seed(12345)
+# Propensity score matching 2-year effect:
+# The propensity model:
+glm_2yr <- glm(treat ~ wartype + logcost + wardur+ factnum+ factnum2+ trnsfcap +treaty +develop+ exp +decade + I(logcost*wartype), data = dataset, family = "binomial")
+
+X_2yr <- glm_2yr$fitted
+Tr_2yr <- dataset$treat
+Y_2yr = dataset$pbs2l_num
+
+
+mout_2yr <- Match(X = X_2yr, Tr = Tr_2yr) # replace and ties are already set to TRUE
+
+# Check for balance first
+balance_2yr <- MatchBalance(glm_2yr, data = dataset, match.out = mout_2yr, nboots = 2000)
+
+# No bias adjusted results
+mout_2yr <- Match(X = X_2yr, Tr = Tr_2yr, Y=Y_2yr)
+summary(mout_2yr)
+
+
+# Bias adjusted results
+mout_2yr <- Match(X = X_2yr, Tr = Tr_2yr, Y=Y_2yr, BiasAdjust = TRUE)
+summary(mout_2yr)
+```
+
+
+5-year effect:
+```{r}
+# The propensity model:
+glm_5yr <- glm(treat ~ wartype + logcost+ wardur+ factnum+ factnum2+ trnsfcap +treaty +develop+ exp +decade + I(logcost*wartype) + I(logcost*logcost) + I(trnsfcap*trnsfcap) + I(factnum2*factnum2)+ I(develop*exp), data = dataset_no.na.5yr, family = "binomial")
+
+X_5yr <- glm_5yr$fitted
+Tr_5yr <- dataset_no.na.5yr$treat
+Y_5yr = dataset_no.na.5yr$pbs5l_num
+
+
+mout_5yr <- Match(X = X_5yr, Tr = Tr_5yr) # replace and ties are already set to TRUE
+
+# Check for balance first
+balance_5yr <- MatchBalance(glm_5yr, data = dataset_no.na.5yr, match.out = mout_5yr, nboots = 2000)
+
+# No bias adjusted results
+mout_5yr <- Match(X = X_5yr, Tr = Tr_5yr, Y=Y_5yr)
+summary(mout_5yr)
+
+
+# Bias adjusted results
+mout_5yr <- Match(X = X_5yr, Tr = Tr_5yr, Y=Y_5yr, BiasAdjust = TRUE)
+summary(mout_5yr)
+```
+
+
+Genetic Matching:
+2-year effect:
+```{r}
+set.seed(10000)
+# Extract the variables
+X <- cbind(dataset$wartype, dataset$logcost, dataset$wardur, dataset$factnum, dataset$factnum2, dataset$trnsfcap, dataset$treaty, dataset$develop, dataset$exp, dataset$decade, (dataset$logcost*dataset$wartype))
+Tr <- dataset$treat
+Y <- dataset$pbs2l_num
+
+# Run GenMatch. Use the best result of previous GenMatch for next GenMatch
+gout <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 25)
+
+gout.1 <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 25, starting.values = gout$par)
+
+gout.2 <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 25, starting.values = gout.1$par)
+
+# Run match and check for balance
+mout <- Match(Tr = Tr, X = X, Weight.matrix = gout.2)
+MatchBalance(treat ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + treaty + develop + exp + decade + I(logcost*wartype), data = dataset, match.out = mout, nboots = 10000)
+
+# Run match with outcome variable and get results
+# Not bias adjusted
+mout <- Match(Tr = Tr, X = X, Y = Y, Weight.matrix = gout.2)
+summary(mout)
+
+# Bias adjusted
+mout <- Match(Tr = Tr, X = X, Y = Y, Weight.matrix = gout.2, BiasAdjust = TRUE)
+summary(mout)
+```
+
+
+5-year effect:
+```{r}
+set.seed(20000)
+# Extract the variables
+X <- cbind(dataset_no.na.5yr$wartype, dataset_no.na.5yr$logcost, dataset_no.na.5yr$wardur, dataset_no.na.5yr$factnum, dataset_no.na.5yr$factnum2, dataset_no.na.5yr$trnsfcap, dataset_no.na.5yr$treaty, dataset_no.na.5yr$develop, dataset_no.na.5yr$exp, dataset_no.na.5yr$decade)
+Tr <- dataset_no.na.5yr$treat
+Y <- dataset_no.na.5yr$pbs5l_num
+
+# Run GenMatch. Use the best result of previous GenMatch for next GenMatch
+gout <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 10)
+
+gout.1 <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 10, starting.values = gout$par)
+
+gout.2 <- GenMatch(Tr = Tr, X = X, pop.size = 300, max.generations = 35, wait.generations = 10, starting.values = gout.1$par)
+
+# Run match and check for balance
+mout <- Match(Tr = Tr, X = X, Weight.matrix = gout.2)
+MatchBalance(treat ~ wartype + logcost + wardur + factnum + factnum2 + trnsfcap + treaty + develop + exp + decade, data = dataset_no.na.5yr, match.out = mout, nboots = 10000)
+
+# Run match with outcome variables get estimates:
+# No bias adjusted
+mout <- Match(Tr = Tr, X = X, Y = Y, Weight.matrix = gout.2)
+summary(mout)
+
+# Bias adjusted
+mout <- Match(Tr = Tr, X = X, Y = Y, Weight.matrix = gout.2, BiasAdjust = TRUE)
+summary(mout)
+```
+
