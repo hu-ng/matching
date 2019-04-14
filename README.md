@@ -1,6 +1,8 @@
 # Logistic Regression and Matching
 
-For an assignment in my Causal Inference course, the bulk of the work is focus on using __logistic regression__, __propensity-score matching__, and __genetic matching__ (popular methods for choosing comparison units in observational studies) and answer the following causal question: "What is the effect of UN intervention on peacebuilding efforts 2 years and 5 years after the end of war?". Data was from [Doyle and Sambanis (2000)](https://www.jstor.org/stable/2586208?seq=1#page_scan_tab_contents)
+For an assignment in my Causal Inference course, the bulk of the work is focus on using __logistic regression__, __propensity-score matching__, and __genetic matching__ (popular methods for choosing comparison units in observational studies) and answer the following causal question: "What is the effect of UN intervention on peacebuilding efforts 2 years and 5 years after the end of war?". Data was from [Doyle and Sambanis (2000)](https://www.jstor.org/stable/2586208?seq=1#page_scan_tab_contents).
+
+In my code, matching was done using the `Matching` library, with heavy use of `GenMatch()` to find the weights for genetic matching, `Match()` to choose treatment-control pairs, and `MatchBalance()` to quantify the similarity between the selected groups.
 
 # Discussion:
 
@@ -15,8 +17,6 @@ Matching in general uses the characteristics of the treated and control units to
 ## Genetic-matching:
 
 Considered to be the most "advanced" of the matching family, genetic matching uses a genetic algorithm to decide the "weights" for variables being used to match on, with the assumption that variables do not have the same importance. Using genetic matching, the similarity between treatment and control groups were much higher, but even with a good match, the treatment effect was statistically insignificant.
-
-In my code, matching was done using the `Matching` library, with heavy use of `GenMatch()` to find the weights for genetic matching, `Match()` to choose treatment-control pairs, and `MatchBalance()` to quantify the similarity between the selected groups.
 
 # Instructions:
 
